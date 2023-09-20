@@ -118,16 +118,18 @@ function run() {
             const jobName = process.env.GITHUB_JOB;
             const jobStatus = core.getInput('status', { required: true }).toUpperCase();
             const jobSteps = JSON.parse(core.getInput('steps', { required: false }) || '{}');
+            const jobMatrix = JSON.parse(core.getInput('matrix', { required: false }) || '{}');
             const channel = core.getInput('channel', { required: false });
             const message = core.getInput('message', { required: false });
             core.debug(`jobName: ${jobName}, jobStatus: ${jobStatus}`);
             core.debug(`channel: ${channel}, message: ${message}`);
+            core.debug(`jobMatrix: ${JSON.stringify(jobMatrix)}`);
             if (url) {
-                yield (0, slack_1.send)(url, jobName, jobStatus, jobSteps, channel, message, config);
+                yield (0, slack_1.send)(url, jobName, jobStatus, jobSteps, jobMatrix, channel, message, config);
                 core.info(`Sent ${jobName} status of ${jobStatus} to Slack!`);
             }
             else {
-                core.warning('No "SLACK_WEBHOOK_URL"s secret or "webhook-url" input configured. Skip.');
+                core.warning('No "SLACK_WEBHOOK_URL"s env or "webhook-url" input configured. Skip.');
             }
         }
         catch (error) {
@@ -217,7 +219,7 @@ function stepIcon(status, opts) {
         return (opts === null || opts === void 0 ? void 0 : opts.skipped) || ':no_entry_sign:';
     return `:grey_question: ${status}`;
 }
-function send(url, jobName, jobStatus, jobSteps, channel, message, opts) {
+function send(url, jobName, jobStatus, jobSteps, jobMatrix, channel, message, opts) {
     var _a, _b;
     return __awaiter(this, void 0, void 0, function* () {
         const eventName = process.env.GITHUB_EVENT_NAME;
@@ -312,16 +314,23 @@ function send(url, jobName, jobStatus, jobSteps, channel, message, opts) {
         const textTemplate = handlebars_1.default.compile(message || (opts === null || opts === void 0 ? void 0 : opts.text) || defaultText);
         const defaultFallback = `[GitHub]: [{{repositoryName}}] {{workflow}} {{eventName}} ${action ? '{{action}} ' : ''}{{jobStatus}}`;
         const fallbackTemplate = handlebars_1.default.compile((opts === null || opts === void 0 ? void 0 : opts.fallback) || defaultFallback);
-        const defaultFields = Object.entries(jobSteps).length
-            ? [
-                {
-                    title: 'Job Steps',
-                    value: '{{#each jobSteps}}{{icon this.outcome}} {{@key}}\n{{~/each}}',
-                    short: false,
-                    if: 'always()'
-                }
-            ]
-            : [];
+        const defaultFields = [];
+        if (Object.entries(jobSteps).length) {
+            defaultFields.push({
+                title: 'Job Steps',
+                value: '{{#each jobSteps}}{{icon this.outcome}} {{@key}}\n{{~/each}}',
+                short: false,
+                if: 'always()'
+            });
+        }
+        if (Object.entries(jobMatrix).length) {
+            defaultFields.push({
+                title: 'Job Matrix',
+                value: '{{#each jobMatrix}}{{@key}}: {{this}}\n{{~/each}}',
+                short: false,
+                if: 'always()'
+            });
+        }
         const filteredFields = [];
         for (const field of (opts === null || opts === void 0 ? void 0 : opts.fields) || defaultFields) {
             const field_if = (field === null || field === void 0 ? void 0 : field.if) || 'always()';
@@ -342,6 +351,7 @@ function send(url, jobName, jobStatus, jobSteps, channel, message, opts) {
             jobName,
             jobStatus,
             jobSteps,
+            jobMatrix,
             eventName,
             workflow,
             workflowUrl,
